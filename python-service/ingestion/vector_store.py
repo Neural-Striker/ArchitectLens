@@ -11,21 +11,18 @@ COLLECTION_NAME = "codebase_context"
 
 
 def get_collection():
-    """
-    Initialize a persistent ChromaDB client and return
-    the codebase_context collection.
-    """
     client = chromadb.PersistentClient(path=CHROMA_PERSIST_PATH)
 
-    openai_ef = embedding_functions.OpenAIEmbeddingFunction(
-        api_key=OPENAI_API_KEY,
-        model_name="text-embedding-3-small"
+    # Free local embeddings — no API key needed
+    from chromadb.utils import embedding_functions
+    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+        model_name="all-MiniLM-L6-v2"
     )
 
     collection = client.get_or_create_collection(
-        name=COLLECTION_NAME,
-        embedding_function=openai_ef,
-        metadata={"hnsw:space": "cosine"}  # cosine similarity for code
+        name="codebase_context",
+        embedding_function=ef,
+        metadata={"hnsw:space": "cosine"}
     )
 
     return collection
@@ -34,7 +31,7 @@ def get_collection():
 def ingest_chunks(chunks: list[dict]):
     """
     Take a list of code chunks and upsert them into ChromaDB.
-    Embeddings are generated automatically via OpenAI.
+    Embeddings are generated locally via SentenceTransformers.
     """
     collection = get_collection()
 
