@@ -1,25 +1,26 @@
 import os
 import logging
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Literal
 from dotenv import load_dotenv
+from pipeline.rag_pipeline import run_analysis
 
 load_dotenv()
 
-# ─── Logging Setup ───────────────────────────────────────────
+# ─── Logging Setup ────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# ─── App Init ────────────────────────────────────────────────
+# ─── App Init ─────────────────────────────────────────────────
 app = FastAPI(title="ArchitectLens Python Service")
 
-# ─── CORS Middleware ─────────────────────────────────────────
+# ─── CORS Middleware ──────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,8 +31,10 @@ app.add_middleware(
 # ─── Auth Middleware ──────────────────────────────────────────
 @app.middleware("http")
 async def verify_internal_key(request: Request, call_next):
-    # Skip auth check for health endpoint
-    if request.url.path == "/health":
+    # Skip auth for these routes
+    skip_paths = ["/health", "/docs", "/openapi.json", "/redoc", "/analyze-test"]
+    
+    if request.url.path in skip_paths:
         return await call_next(request)
 
     incoming_key = request.headers.get("X-Internal-Key")
@@ -49,17 +52,17 @@ async def verify_internal_key(request: Request, call_next):
 # ─── Request Logging Middleware ───────────────────────────────
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    logger.info(f"Incoming request: {request.method} {request.url.path}")
+    logger.info(f"Incoming: {request.method} {request.url.path}")
     response = await call_next(request)
-    logger.info(f"Response status: {response.status_code}")
+    logger.info(f"Response: {response.status_code}")
     return response
 
 # ─── Pydantic Models ──────────────────────────────────────────
 class PRAnalysisRequest(BaseModel):
-    pr_id: int
-    repo_name: str
-    diff_text: str
-    author: str
+    pr_id:      int
+    repo_name:  str
+    diff_text:  str
+    author:     str
     commit_sha: str
 
 class ReviewResponse(BaseModel):
@@ -75,20 +78,37 @@ def health_check():
 
 @app.post("/analyze", response_model=ReviewResponse)
 async def analyze_pr(request: PRAnalysisRequest):
-    logger.info(f"Received PR #{request.pr_id} from repo {request.repo_name} by {request.author}")
+    logger.info(f"Received PR #{request.pr_id} from {request.repo_name} by {request.author}")
 
-    # ── Hardcoded mock response for now ──
-    # This gets replaced in Step 1.6 with the real RAG pipeline
+    result = run_analysis({
+        "pr_id":      request.pr_id,
+        "repo_name":  request.repo_name,
+        "diff_text":  request.diff_text,
+        "author":     request.author,
+        "commit_sha": request.commit_sha
+    })
+
     return ReviewResponse(
-        review_markdown="""## Summary
-Mock review for PR #{pr_id} by {author}. Real analysis coming in Step 1.6.
+        review_markdown=result["review_markdown"],
+        severity=result["severity"],
+        flags=result["flags"]
+    )
 
-## Issues Found
-- **[medium]** This is a placeholder issue for testing the pipeline end-to-end.
+@app.post("/analyze-test", response_model=ReviewResponse)
+async def analyze_pr_test(request: PRAnalysisRequest):
+    """Temporary test endpoint — no auth required. Remove before production."""
+    logger.info(f"TEST: Received PR #{request.pr_id}")
 
-## Recommendations
-- Wire up the RAG pipeline in Step 1.6 to replace this mock response.
-""".format(pr_id=request.pr_id, author=request.author),
-        severity="medium",
-        flags=["no-issues-found"]
+    result = run_analysis({
+        "pr_id":      request.pr_id,
+        "repo_name":  request.repo_name,
+        "diff_text":  request.diff_text,
+        "author":     request.author,
+        "commit_sha": request.commit_sha
+    })
+
+    return ReviewResponse(
+        review_markdown=result["review_markdown"],
+        severity=result["severity"],
+        flags=result["flags"]
     )
