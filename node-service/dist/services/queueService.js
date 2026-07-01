@@ -10,7 +10,7 @@ const analyzerService_1 = require("./analyzerService");
 class QueueService {
     static prQueue;
     static prWorker;
-    static QUEUE_NAME = 'pr-analysis';
+    static QUEUE_NAME = 'pr-review';
     /**
      * Initialize the Redis connection and the job queue.
      */

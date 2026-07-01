@@ -9,7 +9,7 @@ import { PRAnalysisJobData } from '../types';
 export class QueueService {
   private static prQueue: Queue;
   private static prWorker: Worker;
-  public static readonly QUEUE_NAME = 'pr-analysis';
+  public static readonly QUEUE_NAME = 'pr-review';
 
   /**
    * Initialize the Redis connection and the job queue.
